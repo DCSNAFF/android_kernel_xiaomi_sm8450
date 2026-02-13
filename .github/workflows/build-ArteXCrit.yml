@@ -1,9 +1,9 @@
 name: Build ArteXCrit Kernel with SukiSU-Ultra for Marble
 
 on:
-  workflow_dispatch:  # Manual run dari Actions tab
+  workflow_dispatch:  # Manual trigger dari tab Actions
   push:
-    branches: [ lineage-23.2 ]  # Default branch repo ini
+    branches: [ lineage-23.2 ]  # Branch default repo LineageOS sm8450
 
 jobs:
   build:
@@ -12,34 +12,34 @@ jobs:
       - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          submodules: false  # Clean repo, no need recursive
+          submodules: false  # Repo clean, no submodule issue
 
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup AOSP Clang r547379 (latest stable \~Clang 18/22 level for kernel 5.10 GKI)
+      - name: Setup AOSP Clang r547379 (latest stable for GKI 5.10, \~Clang 18 level)
         run: |
-          # Download direct tar.gz archive dari +archive endpoint (binary, no base64!)
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r522817.tar.gz -O clang.tar.gz
-          # Extract
+          # Download direct tar.gz archive (binary gzip, no base64!)
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
+          # Extract ke folder
           mkdir -p \~/aosp-clang
           tar -xzf clang.tar.gz -C \~/aosp-clang --strip-components=1
           rm clang.tar.gz
           echo "\~/aosp-clang/bin" >> $GITHUB_PATH
-          clang --version  # Harus tampil clang version 18.x.x atau similar
-          
-      - name: Apply SukiSU-Ultra patches (KernelPatch latest)
+          clang --version  # Verifikasi version (harus \~18.0.x)
+
+      - name: Apply SukiSU-Ultra KernelPatch patches (latest main)
         run: |
           git clone https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch --depth=1 sukisu-patches
           cd sukisu-patches
-          bash setup.sh main || echo "Warnings OK if build proceeds"
+          bash setup.sh main || echo "Setup may warn, proceed if build continues"
           cd ..
 
-      - name: Set Custom Kernel Name ArteXCrit
+      - name: Set Custom Kernel Name to ArteXCrit
         run: |
-          # Override after defconfig
+          # Override CONFIG_LOCALVERSION setelah defconfig
           echo 'CONFIG_LOCALVERSION="-ArteXCrit"' >> .config || echo 'CONFIG_LOCALVERSION="-ArteXCrit"' > .config
 
       - name: Build GKI Kernel
@@ -53,20 +53,21 @@ jobs:
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
           export PATH=\~/aosp-clang/bin:$PATH
+          # Gunakan defconfig GKI dari repo LineageOS
           make O=out ARCH=arm64 gki_defconfig
           make O=out ARCH=arm64 -j$(nproc --all) CC=clang LD=ld.lld
-          
-      - name: Package AnyKernel3 Zip
+
+      - name: Package with AnyKernel3 (flashable zip)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 --depth=1
-          cp out/arch/arm64/boot/Image* AnyKernel3/ || cp arch/arm64/boot/Image* AnyKernel3/
-          # Copy DTBs (GKI butuh dtb untuk boot)
+          cp out/arch/arm64/boot/Image* AnyKernel3/
+          # Copy DTBs kalau ada (penting untuk GKI boot)
           find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} AnyKernel3/ \; || true
           cd AnyKernel3
           zip -r ../ArteXCrit-Marble-SukiSU.zip * -x .git
           cd ..
 
-      - name: Upload Artifact
+      - name: Upload Artifact (Kernel Zip)
         uses: actions/upload-artifact@v4
         with:
           name: ArteXCrit-Kernel-marble
