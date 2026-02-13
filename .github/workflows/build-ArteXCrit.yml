@@ -13,12 +13,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
-          clean: false  # Biar checkout fresh, tapi kita clean manual
 
-      - name: Install dependencies
+      - name: Install dependencies + lld (for ld.lld linker)
         run: |
           sudo apt update
-          sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu lld
 
       - name: Setup AOSP Clang r547379 via GitHub Mirror
         run: |
@@ -32,25 +31,22 @@ jobs:
           rm -rf \~/clang-mirror
           echo "\~/aosp-clang/bin" >> $GITHUB_PATH
           clang --version
+          ld.lld --version  # Verifikasi lld ada
 
-      - name: Super Clean source tree to fix "not clean" error
+      - name: Super Clean source tree
         run: |
-          # Jalankan mrproper di root source (wajib tanpa O=)
           make ARCH=arm64 mrproper || true
-          # Hapus manual semua file potensial dirty
           rm -f .config* .*.cmd *.o *.ko Module.symvers vmlinux System.map .version .old .tmp_versions || true
-          rm -rf out/ scripts/basic/* scripts/kconfig/* scripts/genksyms/* .tmp* .*.swp || true
-          # Bersihkan untracked files dan reset ke commit clean
-          git clean -fdx -e .github/ || true  # Jangan hapus workflow
+          rm -rf out scripts/basic/* scripts/kconfig/* .tmp* .*.swp || true
+          git clean -fdx -e .github/ || true
           git reset --hard HEAD || true
-          # Verifikasi clean (opsional debug)
-          git status --porcelain || true
+          git status --porcelain || true  # Debug: harus kosong
 
       - name: Apply SukiSU-Ultra patches
         run: |
           git clone https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch --depth=1 sukisu-patches
           cd sukisu-patches
-          bash setup.sh main || echo "Patch setup warnings OK, lanjut build"
+          bash setup.sh main || echo "Warnings OK"
           cd ..
 
       - name: Build GKI Kernel
@@ -58,19 +54,16 @@ jobs:
           ARCH: arm64
           SUBARCH: arm64
           CC: clang
-          LD: ld.lld
+          LD: ld.lld  # Force pakai ld.lld
           CLANG_TRIPLE: aarch64-linux-gnu-
           CROSS_COMPILE: aarch64-linux-gnu-
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
           export PATH=\~/aosp-clang/bin:$PATH
-          # Defconfig GKI (ada di repo ini)
           make O=out ARCH=arm64 gki_defconfig
-          # Tambah nama kernel ArteXCrit ke config build
+          # Tambah nama kernel di out/.config
           echo 'CONFIG_LOCALVERSION="-ArteXCrit"' >> out/.config
-          # Rebuild config untuk apply change
-          make O=out ARCH=arm64 olddefconfig
-          # Build kernel
+          make O=out ARCH=arm64 olddefconfig  # Apply config change
           make O=out ARCH=arm64 -j$(nproc --all) CC=clang LD=ld.lld
 
       - name: Package AnyKernel3
