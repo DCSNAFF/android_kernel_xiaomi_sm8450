@@ -19,19 +19,16 @@ jobs:
           sudo apt update
           sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup AOSP Clang r522817 (Clang \~18, community sebut 22 level, stable untuk kernel 5.10)
+      - name: Setup AOSP Clang r547379 (latest stable \~Clang 18/22 level for kernel 5.10 GKI)
         run: |
-          # Download base64 text dari googlesource
-          wget -O clang-base64.txt "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r547379?format=TEXT"
-          # Decode base64 jadi tar.gz binary
-          base64 -d clang-base64.txt > clang.tar.gz
-          rm clang-base64.txt
+          # Download direct tar.gz archive dari +archive endpoint (binary, no base64!)
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r522817.tar.gz -O clang.tar.gz
           # Extract
           mkdir -p \~/aosp-clang
           tar -xzf clang.tar.gz -C \~/aosp-clang --strip-components=1
           rm clang.tar.gz
           echo "\~/aosp-clang/bin" >> $GITHUB_PATH
-          clang --version  # Harus tampil clang version 18.0.1 atau sejenis
+          clang --version  # Harus tampil clang version 18.x.x atau similar
           
       - name: Apply SukiSU-Ultra patches (KernelPatch latest)
         run: |
@@ -56,7 +53,6 @@ jobs:
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
           export PATH=\~/aosp-clang/bin:$PATH
-          # Defconfig GKI dari repo LineageOS
           make O=out ARCH=arm64 gki_defconfig
           make O=out ARCH=arm64 -j$(nproc --all) CC=clang LD=ld.lld
           
