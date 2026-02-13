@@ -19,13 +19,22 @@ jobs:
           sudo apt update
           sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup Proton Clang toolchain (good for 5.10 GKI)
+      - name: Setup AOSP Clang r522817 (Clang 22 equivalent, stable for 5.10 GKI)
         run: |
-          wget https://github.com/kdrag0n/proton-clang/releases/download/20240921/proton-clang-20240921.tar.gz -O proton.tar.gz
-          mkdir -p \~/proton-clang
-          tar -xzf proton.tar.gz -C \~/proton-clang --strip-components=1
-          echo "\~/proton-clang/bin" >> $GITHUB_PATH
-          clang --version
+          # Download clang-r522817 tar.gz dari AOSP (format archive)
+          mkdir -p \~/aosp-clang
+          cd \~/aosp-clang
+          # Pakai direct archive link dari googlesource (tar.gz available)
+          wget -O clang-r522817.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/master/clang-r522817?format=TEXT" || {
+            echo "Fallback to known mirror or adjust version"
+            # Kalau link base64/text fail, coba manual tag atau mirror
+            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r522817?format=TEXT -O base64.txt
+            base64 -d base64.txt > clang.tar.gz
+            rm base64.txt
+          }
+          tar -xzf clang-r522817.tar.gz --strip-components=1 || tar -xzf clang.tar.gz --strip-components=1
+          echo "$PWD/bin" >> $GITHUB_PATH
+          clang --version  # Harus show clang version \~18.0 or higher
 
       - name: Apply SukiSU-Ultra patches (KernelPatch latest)
         run: |
