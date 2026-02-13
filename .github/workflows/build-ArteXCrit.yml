@@ -19,23 +19,20 @@ jobs:
           sudo apt update
           sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup AOSP Clang r522817 (Clang 22 equivalent, stable for 5.10 GKI)
+      - name: Setup AOSP Clang r522817 (Clang \~18, community sebut 22 level, stable untuk kernel 5.10)
         run: |
-          # Download clang-r522817 tar.gz dari AOSP (format archive)
+          # Download base64 text dari googlesource
+          wget -O clang-base64.txt "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r547379?format=TEXT"
+          # Decode base64 jadi tar.gz binary
+          base64 -d clang-base64.txt > clang.tar.gz
+          rm clang-base64.txt
+          # Extract
           mkdir -p \~/aosp-clang
-          cd \~/aosp-clang
-          # Pakai direct archive link dari googlesource (tar.gz available)
-          wget -O clang-r522817.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/master/clang-r522817?format=TEXT" || {
-            echo "Fallback to known mirror or adjust version"
-            # Kalau link base64/text fail, coba manual tag atau mirror
-            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r522817?format=TEXT -O base64.txt
-            base64 -d base64.txt > clang.tar.gz
-            rm base64.txt
-          }
-          tar -xzf clang-r522817.tar.gz --strip-components=1 || tar -xzf clang.tar.gz --strip-components=1
-          echo "$PWD/bin" >> $GITHUB_PATH
-          clang --version  # Harus show clang version \~18.0 or higher
-
+          tar -xzf clang.tar.gz -C \~/aosp-clang --strip-components=1
+          rm clang.tar.gz
+          echo "\~/aosp-clang/bin" >> $GITHUB_PATH
+          clang --version  # Harus tampil clang version 18.0.1 atau sejenis
+          
       - name: Apply SukiSU-Ultra patches (KernelPatch latest)
         run: |
           git clone https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch --depth=1 sukisu-patches
@@ -52,18 +49,17 @@ jobs:
         env:
           ARCH: arm64
           SUBARCH: arm64
-          CROSS_COMPILE: aarch64-linux-gnu-
+          CC: clang
+          LD: ld.lld
           CLANG_TRIPLE: aarch64-linux-gnu-
+          CROSS_COMPILE: aarch64-linux-gnu-
+          CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
-          export PATH=\~/proton-clang/bin:$PATH
-          # Repo ini pakai build.config.gki.aarch64 untuk GKI
-          # Jalankan build via env dari build.config
-          BUILD_CONFIG=build.config.gki.aarch64 make -j$(nproc --all) || {
-            # Fallback manual kalau build.config gagal
-            make O=out ARCH=arm64 gki_defconfig
-            make O=out ARCH=arm64 -j$(nproc --all)
-          }
-
+          export PATH=\~/aosp-clang/bin:$PATH
+          # Defconfig GKI dari repo LineageOS
+          make O=out ARCH=arm64 gki_defconfig
+          make O=out ARCH=arm64 -j$(nproc --all) CC=clang LD=ld.lld
+          
       - name: Package AnyKernel3 Zip
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 --depth=1
