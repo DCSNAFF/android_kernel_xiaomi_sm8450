@@ -32,28 +32,27 @@ jobs:
           echo "\~/aosp-clang/bin" >> $GITHUB_PATH
           clang --version
 
-      - name: Aggressive Clean kernel source tree
+      - name: Aggressive Clean source tree
         run: |
-          # Clean total seperti yang diminta kernel
-          make ARCH=arm64 mrproper ls -la || true
-          # Hapus manual file yang sering bikin "not clean"
-          rm -f .config .config.old Module.symvers vmlinux System.map .version || true
-          rm -rf out scripts/basic scripts/kconfig/lxdialog scripts/kconfig/zconf.tab.c scripts/kconfig/zconf.hash.c || true
-          git clean -fdx || true  # Bersihin file untracked (hati-hati, ini agresif tapi aman di CI)
+          make ARCH=arm64 mrproper || true
+          rm -f .config* Module.symvers vmlinux System.map .version || true
+          rm -rf out scripts/basic/* scripts/kconfig/* || true
+          git clean ls -la -fdx || true  # Hapus semua untracked files (aman di fresh checkout)
+          git reset --hard HEAD || true  # Reset ke commit bersih
 
       - name: Apply SukiSU-Ultra patches
         run: |
           git clone https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch --depth=1 sukisu-patches
           cd sukisu-patches
-          bash setup.sh main || echo "Setup may have warnings, continue anyway"
+          bash setup.sh main || echo "Warnings OK"
           cd ..
 
       - name: Set Custom Kernel Name ArteXCrit
         run: |
-          # Buat .config baru setelah clean
-          echo 'CONFIG_LOCALVERSION="-ArteXCrit"' > .config
+          # Tambah ke config setelah clean
+          echo 'CONFIG_LOCALVERSION="-ArteXCrit"' >> .config || echo 'CONFIG_LOCALVERSION="-ArteXCrit"' > .config
 
-      - name: Build GKI Kernel
+      - name: Build GKI Kernel using build.config.gki.aarch64
         env:
           ARCH: arm64
           SUBARCH: arm64
@@ -64,9 +63,14 @@ jobs:
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
           export PATH=\~/aosp-clang/bin:$PATH
-          # Defconfig GKI (pastikan ini ada di arch/arm64/configs/gki_defconfig)
-          make O=out ARCH=arm64 gki_defconfig
-          make O=out ARCH=arm64 -j$(nproc --all) CC=clang LD=ld.lld
+          # Source build.config untuk set env resmi LineageOS GKI
+          source build.config.gki.aarch64
+          # Jalankan build kernel (setelah source, ini run build)
+          build/build.sh || {
+            # Fallback manual kalau build.sh tidak ada atau fail
+            make O=out gki_defconfig
+            make O=out -j$(nproc --all)
+          }
 
       - name: Package AnyKernel3
         run: |
