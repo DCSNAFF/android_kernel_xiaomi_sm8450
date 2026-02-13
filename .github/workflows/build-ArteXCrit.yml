@@ -19,7 +19,7 @@ jobs:
           sudo apt update
           sudo apt install -y bc bison build-essential curl flex git libelf-dev liblz4-tool libncurses5-dev libssl-dev python3 unzip zip zlib1g-dev cpio lzop rsync squashfs-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup AOSP Clang r547379 via GitHub Mirror (latest stable for GKI 5.10)
+      - name: Setup AOSP Clang r547379 via GitHub Mirror
         run: |
           git clone --depth=1 --filter=blob:none --sparse https://github.com/msft-mirror-aosp/platform.prebuilts.clang.host.linux-x86.git \~/clang-mirror
           cd \~/clang-mirror
@@ -32,22 +32,26 @@ jobs:
           echo "\~/aosp-clang/bin" >> $GITHUB_PATH
           clang --version
 
-      - name: Clean kernel source tree (fix "not clean" error)
+      - name: Aggressive Clean kernel source tree
         run: |
-          make ARCH=arm64 mrproper || true  # Bersihin total source tree (hapus .config lama, dll)
-          rm -rf out || true  # Hapus out/ kalau ada sisa
+          # Clean total seperti yang diminta kernel
+          make ARCH=arm64 mrproper ls -la || true
+          # Hapus manual file yang sering bikin "not clean"
+          rm -f .config .config.old Module.symvers vmlinux System.map .version || true
+          rm -rf out scripts/basic scripts/kconfig/lxdialog scripts/kconfig/zconf.tab.c scripts/kconfig/zconf.hash.c || true
+          git clean -fdx || true  # Bersihin file untracked (hati-hati, ini agresif tapi aman di CI)
 
-      - name: Apply SukiSU-Ultra KernelPatch patches
+      - name: Apply SukiSU-Ultra patches
         run: |
           git clone https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch --depth=1 sukisu-patches
           cd sukisu-patches
-          bash setup.sh main || echo "Setup warnings OK if build continues"
+          bash setup.sh main || echo "Setup may have warnings, continue anyway"
           cd ..
 
-      - name: Set Custom Kernel Name to ArteXCrit
+      - name: Set Custom Kernel Name ArteXCrit
         run: |
-          # Set LOCALVERSION setelah clean (sebelum defconfig)
-          echo 'CONFIG_LOCALVERSION="-ArteXCrit"' > .config || echo 'CONFIG_LOCALVERSION="-ArteXCrit"' >> .config
+          # Buat .config baru setelah clean
+          echo 'CONFIG_LOCALVERSION="-ArteXCrit"' > .config
 
       - name: Build GKI Kernel
         env:
@@ -60,10 +64,11 @@ jobs:
           CROSS_COMPILE_ARM32: arm-linux-gnueabi-
         run: |
           export PATH=\~/aosp-clang/bin:$PATH
+          # Defconfig GKI (pastikan ini ada di arch/arm64/configs/gki_defconfig)
           make O=out ARCH=arm64 gki_defconfig
           make O=out ARCH=arm64 -j$(nproc --all) CC=clang LD=ld.lld
 
-      - name: Package with AnyKernel3
+      - name: Package AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 --depth=1
           cp out/arch/arm64/boot/Image* AnyKernel3/
